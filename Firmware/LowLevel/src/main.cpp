@@ -768,12 +768,17 @@ void onPacketReceived(const uint8_t *buffer, const size_t size) {
                 if (fw_file.write(payload, data_len) == data_len) {
                     fw_received_bytes += data_len;
                     ack.status = 0; // OK
+                    p.neoPixelSetValue(0, 0, 0, (fw_received_bytes / 256) % 2 ? 255 : 50, true); // Blink blue as it receives
                 }
             } else {
                 ack.status = 2; // Offset mismatch
             }
         }
-        sendMessage(&ack, sizeof(ack));
+        // Force ACK send
+        uint16_t ack_crc = CRC16.ccitt((uint8_t *)&ack, sizeof(ack) - 2);
+        ((uint8_t *)&ack)[sizeof(ack) - 1] = (ack_crc >> 8) & 0xFF;
+        ((uint8_t *)&ack)[sizeof(ack) - 2] = (ack_crc & 0xFF);
+        packetSerial.send((uint8_t *)&ack, sizeof(ack));
     } else if (buffer[0] == PACKET_ID_FW_END && size == sizeof(struct ll_fw_end)) {
         ll_fw_ack ack;
         ack.type = PACKET_ID_FW_ACK;
@@ -808,16 +813,21 @@ void onPacketReceived(const uint8_t *buffer, const size_t size) {
 
                 if (calc_crc == fw_expected_crc32) {
                     ack.status = 0; // OK
-                    // Phase 1: Reboot isn't strictly required but marks end.
+                    p.neoPixelSetValue(0, 0, 255, 0, true); // Green = Success
                 } else {
                     ack.status = 3; // CRC mismatch
+                    p.neoPixelSetValue(0, 255, 0, 0, true); // Red = CRC Err
                 }
             } else {
                 if (read_file) read_file.close();
-                ack.status = 4; // Size mismatch or file read error
+                ack.status = 4; // Size mismatch / read err
             }
         }
-        sendMessage(&ack, sizeof(ack));
+        // Force ACK send
+        uint16_t ack_crc = CRC16.ccitt((uint8_t *)&ack, sizeof(ack) - 2);
+        ((uint8_t *)&ack)[sizeof(ack) - 1] = (ack_crc >> 8) & 0xFF;
+        ((uint8_t *)&ack)[sizeof(ack) - 2] = (ack_crc & 0xFF);
+        packetSerial.send((uint8_t *)&ack, sizeof(ack));
     } else if (buffer[0] == PACKET_ID_FW_ABORT) {
         if (fw_file) {
             fw_file.close();

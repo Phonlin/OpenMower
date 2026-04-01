@@ -7,7 +7,7 @@ from cobs import cobs
 # 設定 UART 參數 (根據你的 RPi 實際對接 PICO 的 Serial 埠)
 SERIAL_PORT = '/dev/ttyAMA0'
 BAUD_RATE = 115200
-CHUNK_SIZE = 256  # 建議與 Pico 端對應
+CHUNK_SIZE = 128  # 降低 Chunk size 以增加穩定性
 
 # Packet IDs (與 datatypes.h 一致)
 PACK_ID_FW_BEGIN = 0xE1
