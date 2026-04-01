@@ -897,6 +897,12 @@ void updateNeopixel() {
 void loop() {
     packetSerial.update();
     UISerial.update();
+
+    // 如果正在更新韌體，我們就只做通訊處理，暫停 IMU 和 Status 更新
+    if (fw_update_state == FWUpdateState::DOWNLOADING) {
+        return;
+    }
+
     imu_loop();
     updateChargingEnabled();
     updateEmergency();

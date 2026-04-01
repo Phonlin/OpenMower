@@ -112,11 +112,13 @@ def update_firmware(file_path):
                 if ok and status == 0:
                     break
                 print(f"重傳 Chunk @ {offset} (Retry {retry+1})...")
+                time.sleep(0.05) # 重傳前多等一下
             else:
                 print("傳輸失敗：多次重試無效。")
                 send_packet(ser, PACK_ID_FW_ABORT)
                 return
             
+            time.sleep(0.03) # 每次成功傳完一個 chunk 後，給予 Pico 緩衝時間
             # 進度條
             progress = (offset + len(chunk)) / fw_size * 100
             print(f"\r進度: {progress:.1f}%", end="")
