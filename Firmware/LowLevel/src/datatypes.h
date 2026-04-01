@@ -29,6 +29,13 @@
 #define PACKET_ID_LL_HEARTBEAT 0x42
 #define PACKET_ID_LL_HIGH_LEVEL_STATE 0x43
 
+#define PACKET_ID_FW_BEGIN 0xE1
+#define PACKET_ID_FW_CHUNK 0xE2
+#define PACKET_ID_FW_END   0xE3
+#define PACKET_ID_FW_ACK   0xE4
+#define PACKET_ID_FW_ABORT 0xE5
+
+
 /**
  * @brief Simple class containing only the static methods,
  * for more comfortable as well as more speaking HighLevel-Mode and SubMode handling
@@ -152,6 +159,40 @@ struct ll_heartbeat {
     uint16_t crc;
 } __attribute__((packed));
 #pragma pack(pop)
+
+#pragma pack(push, 1)
+struct ll_fw_begin {
+    uint8_t type;
+    uint32_t fw_size;
+    uint32_t fw_crc32;
+    uint16_t chunk_size;
+    uint16_t crc;
+} __attribute__((packed));
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+struct ll_fw_chunk {
+    uint8_t type;
+    uint32_t offset;
+    // The data follows the offset, length is determined by packet size - offset - crc(2) - type(1), usually 256.
+} __attribute__((packed));
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+struct ll_fw_end {
+    uint8_t type;
+    uint16_t crc;
+} __attribute__((packed));
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+struct ll_fw_ack {
+    uint8_t type;
+    uint8_t status; // 0 for OK, >0 for ERROR
+    uint16_t crc;
+} __attribute__((packed));
+#pragma pack(pop)
+
 
 
 #pragma pack(push, 1)

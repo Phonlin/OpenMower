@@ -115,6 +115,20 @@ bool charging_allowed = false;
 bool ROS_running = false;
 unsigned long charging_disabled_time = 0;
 
+// Firmware Update state
+enum class FWUpdateState {
+    IDLE,
+    DOWNLOADING
+};
+FWUpdateState fw_update_state = FWUpdateState::IDLE;
+uint32_t fw_expected_size = 0;
+uint32_t fw_expected_crc32 = 0;
+uint16_t fw_chunk_size = 0;
+uint32_t fw_received_bytes = 0;
+File fw_file;
+FastCRC32 CRC32_fw;
+
+
 float imu_temp[9];
 float pitch_angle = 0, roll_angle = 0, tilt_angle = 0;
 
@@ -708,14 +722,107 @@ void onPacketReceived(const uint8_t *buffer, const size_t size) {
             sendConfigMessage(PACKET_ID_LL_HIGH_LEVEL_CONFIG_RSP);  // Other side requested a config response
 
         saveConfigToFlash(buffer, size, crc);
-    }
-    else if (buffer[0] == PACKET_ID_ENTER_BOOTSEL &&
-            size == sizeof(struct ll_enter_bootsel)) {
-                const ll_enter_bootsel *msg = (const ll_enter_bootsel *)buffer;
-                if (msg->magic == BOOTSEL_MAGIC) {
-                    delay(100);
-                    reset_usb_boot(0, 0);
+    } else if (buffer[0] == PACKET_ID_ENTER_BOOTSEL &&
+               size == sizeof(struct ll_enter_bootsel)) {
+        const ll_enter_bootsel *msg = (const ll_enter_bootsel *)buffer;
+        if (msg->magic == BOOTSEL_MAGIC) {
+            delay(100);
+            reset_usb_boot(0, 0);
+        }
+    } else if (buffer[0] == PACKET_ID_FW_BEGIN && size == sizeof(struct ll_fw_begin)) {
+        const ll_fw_begin *msg = (const ll_fw_begin *)buffer;
+        fw_expected_size = msg->fw_size;
+        fw_expected_crc32 = msg->fw_crc32;
+        fw_chunk_size = msg->chunk_size;
+        fw_received_bytes = 0;
+        
+        fw_file = LittleFS.open("/firmware.bin", "w");
+        ll_fw_ack ack;
+        ack.type = PACKET_ID_FW_ACK;
+        if (fw_file) {
+            fw_update_state = FWUpdateState::DOWNLOADING;
+            ack.status = 0; // OK
+        } else {
+            fw_update_state = FWUpdateState::IDLE;
+            ack.status = 1; // ERR
+        }
+        sendMessage(&ack, sizeof(ack));
+    } else if (buffer[0] == PACKET_ID_FW_CHUNK) {
+        // Need to check size manually because payload has variable length depending on FW_CHUNK data
+        uint16_t data_len = size - 3 - 4; // size - (type + crc) - offset
+        const ll_fw_chunk *msg = (const ll_fw_chunk *)buffer;
+        const uint8_t *payload = buffer + sizeof(ll_fw_chunk);
+
+        ll_fw_ack ack;
+        ack.type = PACKET_ID_FW_ACK;
+        ack.status = 1; // Default to error
+
+        if (fw_update_state == FWUpdateState::DOWNLOADING && fw_file) {
+            if (msg->offset == fw_received_bytes) {
+                if (fw_file.write(payload, data_len) == data_len) {
+                    fw_received_bytes += data_len;
+                    ack.status = 0; // OK
                 }
+            } else {
+                ack.status = 2; // Offset mismatch
+            }
+        }
+        sendMessage(&ack, sizeof(ack));
+    } else if (buffer[0] == PACKET_ID_FW_END && size == sizeof(struct ll_fw_end)) {
+        ll_fw_ack ack;
+        ack.type = PACKET_ID_FW_ACK;
+        ack.status = 1; // Default to error
+
+        if (fw_update_state == FWUpdateState::DOWNLOADING && fw_file) {
+            fw_file.close();
+            fw_update_state = FWUpdateState::IDLE;
+
+            // Verify CRC32
+            File read_file = LittleFS.open("/firmware.bin", "r");
+            if (read_file && read_file.size() == fw_expected_size) {
+                uint8_t temp_buf[256];
+                uint32_t bytes_read = 0;
+                bool first_chunk = true;
+                uint32_t calc_crc = 0;
+
+                while (read_file.available()) {
+                    uint16_t to_read = min((uint32_t)sizeof(temp_buf), fw_expected_size - bytes_read);
+                    uint16_t read_bytes = read_file.read(temp_buf, to_read);
+                    if (read_bytes == 0) break;
+
+                    if (first_chunk) {
+                        calc_crc = CRC32_fw.crc32(temp_buf, read_bytes);
+                        first_chunk = false;
+                    } else {
+                        calc_crc = CRC32_fw.crc32_upd(temp_buf, read_bytes);
+                    }
+                    bytes_read += read_bytes;
+                }
+                read_file.close();
+
+                if (calc_crc == fw_expected_crc32) {
+                    ack.status = 0; // OK
+                    // Phase 1: Reboot isn't strictly required but marks end.
+                } else {
+                    ack.status = 3; // CRC mismatch
+                }
+            } else {
+                if (read_file) read_file.close();
+                ack.status = 4; // Size mismatch or file read error
+            }
+        }
+        sendMessage(&ack, sizeof(ack));
+    } else if (buffer[0] == PACKET_ID_FW_ABORT) {
+        if (fw_file) {
+            fw_file.close();
+        }
+        fw_update_state = FWUpdateState::IDLE;
+        LittleFS.remove("/firmware.bin");
+        
+        ll_fw_ack ack;
+        ack.type = PACKET_ID_FW_ACK;
+        ack.status = 0; // OK aborted
+        sendMessage(&ack, sizeof(ack));
     }
 }
 
