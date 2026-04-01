@@ -49,6 +49,16 @@ SerialPIO uiSerial(PIN_UI_TX, PIN_UI_RX, 250);
 
 #define UI1_SERIAL uiSerial
 
+// RPi 開機用
+#define PACKET_ID_ENTER_BOOTSEL 0xE0
+#define BOOTSEL_MAGIC 0x5049434F
+
+struct __attribute__((packed)) ll_enter_bootsel {
+    uint8_t type;
+    uint32_t magic;
+    uint16_t crc;
+};
+
 // Millis after charging is retried
 #define CHARGING_RETRY_MILLIS 10000
 
@@ -142,30 +152,6 @@ void manageUISubscriptions();
 void readConfigFromFlash();
 void saveConfigToFlash(const uint8_t *t_buffer, const size_t t_size, const uint16_t t_crc);
 void updateConfigInFlash();
-
-// 確認 Serial 是否收到 "update" 指令，如果有則進入 bootsel 模式
-void checkBootsel(){
-    if (Serial.available()) {
-        String cmd = Serial.readStringUntil('\n');
-        Serial.println(cmd);
-
-        if (cmd == "update") {
-            Serial.println("進入燒錄模式...");
-            delay(100);
-            reset_usb_boot(0, 0);  // 進入 USB 燒錄模式
-        }
-    }
-    else if (PACKET_SERIAL.available()) {
-        String cmd = PACKET_SERIAL.readStringUntil('\n');
-        PACKET_SERIAL.println(cmd);
-
-        if (cmd == "update") {
-            PACKET_SERIAL.println("進入燒錄模式...");
-            delay(100);
-            reset_usb_boot(0, 0);  // 進入 USB 燒錄模式
-        }
-    }
-}
 
 void setRaspiPower(bool power) {
     // Update status bits in the status message
@@ -360,7 +346,6 @@ void setup1() {
 }
 
 void loop1() {
-    checkBootsel(); // 確認 Serial 是否有 "update" 指令
     // Loop through the mux and query actions. Store the result in the multicore fifo
     for (uint8_t mux_address = 0; mux_address < 7; mux_address++) {
         gpio_put_masked(0b111 << 13, mux_address << 13);
@@ -414,9 +399,6 @@ void loop1() {
 }
 
 void setup() {
-    // 為了透過 RPI 進入 bootsel 模式
-    Serial.begin(9600);
-
     //  We do hardware init in this core, so that we don't get invalid states.
     //  Therefore, we pause the other core until vars used in OtherCore got initialized.
     rp2040.idleOtherCore();
@@ -726,6 +708,14 @@ void onPacketReceived(const uint8_t *buffer, const size_t size) {
             sendConfigMessage(PACKET_ID_LL_HIGH_LEVEL_CONFIG_RSP);  // Other side requested a config response
 
         saveConfigToFlash(buffer, size, crc);
+    }
+    else if (buffer[0] == PACKET_ID_ENTER_BOOTSEL &&
+            size == sizeof(struct ll_enter_bootsel)) {
+                const ll_enter_bootsel *msg = (const ll_enter_bootsel *)buffer;
+                if (msg->magic == BOOTSEL_MAGIC) {
+                    delay(100);
+                    reset_usb_boot(0, 0);
+                }
     }
 }
 
