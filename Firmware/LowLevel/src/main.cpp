@@ -14,6 +14,10 @@
 // SOFTWARE.
 //
 //
+
+// 為了透過 RPI 進入 bootsel 模式
+#include "pico/bootrom.h"
+
 #include <Arduino.h>
 #include <FastCRC.h>
 #include <LittleFS.h>
@@ -138,6 +142,30 @@ void manageUISubscriptions();
 void readConfigFromFlash();
 void saveConfigToFlash(const uint8_t *t_buffer, const size_t t_size, const uint16_t t_crc);
 void updateConfigInFlash();
+
+// 確認 Serial 是否收到 "update" 指令，如果有則進入 bootsel 模式
+void checkBootsel(){
+    if (Serial.available()) {
+        String cmd = Serial.readStringUntil('\n');
+        Serial.println(cmd);
+
+        if (cmd == "update") {
+            Serial.println("進入燒錄模式...");
+            delay(100);
+            reset_usb_boot(0, 0);  // 進入 USB 燒錄模式
+        }
+    }
+    else if (PACKET_SERIAL.available()) {
+        String cmd = PACKET_SERIAL.readStringUntil('\n');
+        PACKET_SERIAL.println(cmd);
+
+        if (cmd == "update") {
+            PACKET_SERIAL.println("進入燒錄模式...");
+            delay(100);
+            reset_usb_boot(0, 0);  // 進入 USB 燒錄模式
+        }
+    }
+}
 
 void setRaspiPower(bool power) {
     // Update status bits in the status message
@@ -332,6 +360,7 @@ void setup1() {
 }
 
 void loop1() {
+    checkBootsel(); // 確認 Serial 是否有 "update" 指令
     // Loop through the mux and query actions. Store the result in the multicore fifo
     for (uint8_t mux_address = 0; mux_address < 7; mux_address++) {
         gpio_put_masked(0b111 << 13, mux_address << 13);
@@ -339,6 +368,19 @@ void loop1() {
         bool state = gpio_get(PIN_MUX_IN);
 
         switch (mux_address) {
+            // USS_L 左側超音波
+            case 0:
+                status_message.uss_ranges_m[0] = 0.5;  // 測試值
+                break;
+            // USS_R 右側超音波
+            case 1:
+                status_message.uss_ranges_m[1] = 2.5;  // 測試值
+                break;
+            // Hall 碰撞霍爾
+            case 2:
+                // TODO: hall 未處理
+                break;
+
             case 5:
                 mutex_enter_blocking(&mtx_status_message);
 
@@ -372,6 +414,9 @@ void loop1() {
 }
 
 void setup() {
+    // 為了透過 RPI 進入 bootsel 模式
+    Serial.begin(9600);
+
     //  We do hardware init in this core, so that we don't get invalid states.
     //  Therefore, we pause the other core until vars used in OtherCore got initialized.
     rp2040.idleOtherCore();
