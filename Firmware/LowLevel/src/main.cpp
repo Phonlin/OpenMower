@@ -1000,7 +1000,8 @@ void loop() {
 
 void sendMessage(void *message, size_t size) {
     // Only send messages, if ROS is running, else Raspi sometimes doesn't boot
-    if (!ROS_running)
+    // Exception: Allow firmware update ACKs
+    if (!ROS_running && ((uint8_t*)message)[0] != PACKET_ID_FW_ACK)
         return;
 
     // packages need to be at least 1 byte of type, 1 byte of data and 2 bytes of CRC
