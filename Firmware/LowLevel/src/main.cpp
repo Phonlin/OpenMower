@@ -742,11 +742,17 @@ void onPacketReceived(const uint8_t *buffer, const size_t size) {
         if (fw_file) {
             fw_update_state = FWUpdateState::DOWNLOADING;
             ack.status = 0; // OK
+            p.neoPixelSetValue(0, 0, 0, 255, true); // Blue = Update Begin
         } else {
             fw_update_state = FWUpdateState::IDLE;
             ack.status = 1; // ERR
+            p.neoPixelSetValue(0, 255, 0, 0, true); // Red = Error
         }
-        sendMessage(&ack, sizeof(ack));
+        // Force send via packetSerial bypassing sendMessage check
+        uint16_t ack_crc = CRC16.ccitt((uint8_t *)&ack, sizeof(ack) - 2);
+        ((uint8_t *)&ack)[sizeof(ack) - 1] = (ack_crc >> 8) & 0xFF;
+        ((uint8_t *)&ack)[sizeof(ack) - 2] = (ack_crc & 0xFF);
+        packetSerial.send((uint8_t *)&ack, sizeof(ack));
     } else if (buffer[0] == PACKET_ID_FW_CHUNK) {
         // Need to check size manually because payload has variable length depending on FW_CHUNK data
         uint16_t data_len = size - 3 - 4; // size - (type + crc) - offset
