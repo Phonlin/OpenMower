@@ -3,6 +3,12 @@ import struct
 import time
 import binascii
 from cobs import cobs
+import requests
+import zipfile
+import io
+
+# Firmware 自動下載抓取
+FIRMWARE_URL = "https://github.com/Phonlin/OpenMower/releases/download/latest/firmware.zip"
 
 # 設定 UART 參數 (根據你的 RPi 實際對接 PICO 的 Serial 埠)
 SERIAL_PORT = '/dev/ttyAMA0'
@@ -135,8 +141,16 @@ def update_firmware(file_path):
         else:
             print(f"--- 更新失敗！Pico 報錯代碼: {status} ---")
 
+# 抓取並解壓縮
+def fetch_latest_firmware(url):
+    response = requests.get(url)
+    response.raise_for_status()
+    
+    with zipfile.ZipFile(io.BytesIO(response.content), "r") as zip_ref:
+        zip_ref.extractall("FW")
+
 if __name__ == "__main__":
-    # 請修改為你實際產出的 .bin 路徑
-    # 例如：.pio/build/0_13_X/firmware.bin
-    FW_PATH = 'firmware.bin' 
+    FW_PATH = 'FW/firmware/0_13_X/firmware.bin'
+    
+    fetch_latest_firmware(FIRMWARE_URL) 
     update_firmware(FW_PATH)
