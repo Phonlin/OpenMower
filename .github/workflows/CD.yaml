@@ -10,9 +10,6 @@ on:
   pull_request:
     paths:
       - "LowLevel/**"
-    paths-ignore:
-      - "LowLevel/**.md"
-      - "**.md"
 
   workflow_dispatch:
 
