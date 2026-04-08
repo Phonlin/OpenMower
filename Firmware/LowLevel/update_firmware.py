@@ -160,5 +160,5 @@ if __name__ == "__main__":
     if fetch_latest_firmware(FIRMWARE_URL):
         update_firmware(FW_PATH)
     else:
-        print("終止更新流程")
+        print("停止更新")
         exit(1)
