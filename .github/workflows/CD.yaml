@@ -4,12 +4,14 @@ on:
   push:
     paths:
       - "LowLevel/**"
-    paths-ignore:
-      - "**.md"
+      - "!LowLevel/**.md"
+      - "!**.md"
 
   pull_request:
     paths:
       - "LowLevel/**"
+      - "!LowLevel/**.md"
+      - "!**.md"
 
   workflow_dispatch:
 
