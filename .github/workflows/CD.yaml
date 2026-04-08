@@ -3,14 +3,14 @@ name: CD
 on:
   push:
     paths:
-      - "LowLevel/**"
-      - "!LowLevel/**.md"
+      - "Firmware/LowLevel/**"
+      - "!Firmware/LowLevel/**.md"
       - "!**.md"
 
   pull_request:
     paths:
-      - "LowLevel/**"
-      - "!LowLevel/**.md"
+      - "Firmware/LowLevel/**"
+      - "!Firmware/LowLevel/**.md"
       - "!**.md"
 
   workflow_dispatch:
