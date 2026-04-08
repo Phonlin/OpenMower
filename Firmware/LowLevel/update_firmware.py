@@ -41,7 +41,6 @@ def send_packet(ser, packet_id, payload=b""):
     raw_data = struct.pack('B', packet_id) + payload
     
     # 預留 2 bytes 給 CRC
-    raw_data_for_crc = raw_data + b'\x00\x00'
     crc = calc_crc16_ccitt(raw_data)
     
     # 修改最後兩位為 CRC (依據 main.cpp: data_pointer[size-2] = crc & 0xFF; data_pointer[size-1] = (crc >> 8) & 0xFF;)
@@ -124,7 +123,6 @@ def update_firmware(file_path):
                 send_packet(ser, PACK_ID_FW_ABORT)
                 return
             
-            time.sleep(0.03) # 每次成功傳完一個 chunk 後，給予 Pico 緩衝時間
             # 進度條
             progress = (offset + len(chunk)) / fw_size * 100
             print(f"\r進度: {progress:.1f}%", end="")
@@ -143,14 +141,24 @@ def update_firmware(file_path):
 
 # 抓取並解壓縮
 def fetch_latest_firmware(url):
-    response = requests.get(url)
-    response.raise_for_status()
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+    except Exception as e:
+        print(f"下載失敗: {e}")
+        return False
     
     with zipfile.ZipFile(io.BytesIO(response.content), "r") as zip_ref:
         zip_ref.extractall("FW")
+    
+    return True
 
 if __name__ == "__main__":
     FW_PATH = 'FW/firmware/0_13_X/firmware.bin'
-    
-    fetch_latest_firmware(FIRMWARE_URL) 
-    update_firmware(FW_PATH)
+
+    # 確保成功下載才更新
+    if fetch_latest_firmware(FIRMWARE_URL):
+        update_firmware(FW_PATH)
+    else:
+        print("終止更新流程")
+        exit(1)
