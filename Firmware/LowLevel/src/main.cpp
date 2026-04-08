@@ -554,8 +554,8 @@ void onUIPacketReceived(const uint8_t *buffer, size_t size) {
     u_int16_t *crc_pointer = (uint16_t *) (buffer + (size - 2));
     u_int16_t readcrc = *crc_pointer;
 
-    // check structure size
-    if (size < 4)
+    // check structure size (type + crc)
+    if (size < 3)
         return;
 
     // check the CRC
@@ -678,8 +678,8 @@ void applyConfig(const uint8_t *buffer, const size_t size) {
 }
 
 void onPacketReceived(const uint8_t *buffer, const size_t size) {
-    // sanity check for CRC to work (1 type, 1 data, 2 CRC)
-    if (size < 4)
+    // sanity check for CRC to work (1 type, 2 CRC)
+    if (size < 3)
         return;
 
     // check the CRC
