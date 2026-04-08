@@ -1,4 +1,4 @@
-name: CI
+name: CD
 
 on:
   push:
@@ -45,7 +45,8 @@ jobs:
           pip install --upgrade platformio
 
       - name: Run PlatformIO
-        run: pio run -d Firmware/LowLevel
+        run: pio run -d Firmware/LowLevel -e 0_13_X
+        # 只跑 0_13_X 環境
 
       - name: Copy Artifacts
         run: |
@@ -55,61 +56,13 @@ jobs:
           mkdir ./artifacts/0_13_X
           cp Firmware/LowLevel/.pio/build/0_13_X/firmware.elf ./artifacts/0_13_X
           cp Firmware/LowLevel/.pio/build/0_13_X/firmware.uf2 ./artifacts/0_13_X
-          
-          mkdir ./artifacts/0_12_X_LSM6DSO
-          cp Firmware/LowLevel/.pio/build/0_12_X/firmware.elf ./artifacts/0_12_X_LSM6DSO
-          cp Firmware/LowLevel/.pio/build/0_12_X/firmware.uf2 ./artifacts/0_12_X_LSM6DSO
-
-          mkdir ./artifacts/0_12_X
-          cp Firmware/LowLevel/.pio/build/0_12_X/firmware.elf ./artifacts/0_12_X
-          cp Firmware/LowLevel/.pio/build/0_12_X/firmware.uf2 ./artifacts/0_12_X
-          
-          mkdir ./artifacts/0_11_X_MPU9250
-          cp Firmware/LowLevel/.pio/build/0_11_X_MPU9250/firmware.elf ./artifacts/0_11_X_MPU9250
-          cp Firmware/LowLevel/.pio/build/0_11_X_MPU9250/firmware.uf2 ./artifacts/0_11_X_MPU9250
-
-          mkdir ./artifacts/0_11_X_WT901
-          cp Firmware/LowLevel/.pio/build/0_11_X_WT901/firmware.elf ./artifacts/0_11_X_WT901
-          cp Firmware/LowLevel/.pio/build/0_11_X_WT901/firmware.uf2 ./artifacts/0_11_X_WT901
-          
-          mkdir ./artifacts/0_11_X_LSM6DSO
-          cp Firmware/LowLevel/.pio/build/0_11_X_LSM6DSO/firmware.elf ./artifacts/0_11_X_LSM6DSO
-          cp Firmware/LowLevel/.pio/build/0_11_X_LSM6DSO/firmware.uf2 ./artifacts/0_11_X_LSM6DSO
-          
-          mkdir ./artifacts/0_10_X_MPU9250
-          cp Firmware/LowLevel/.pio/build/0_10_X_MPU9250/firmware.elf ./artifacts/0_10_X_MPU9250
-          cp Firmware/LowLevel/.pio/build/0_10_X_MPU9250/firmware.uf2 ./artifacts/0_10_X_MPU9250
-
-          mkdir ./artifacts/0_10_X_WT901
-          cp Firmware/LowLevel/.pio/build/0_10_X_WT901/firmware.elf ./artifacts/0_10_X_WT901
-          cp Firmware/LowLevel/.pio/build/0_10_X_WT901/firmware.uf2 ./artifacts/0_10_X_WT901
-          
-          mkdir ./artifacts/0_10_X_LSM6DSO
-          cp Firmware/LowLevel/.pio/build/0_10_X_LSM6DSO/firmware.elf ./artifacts/0_10_X_LSM6DSO
-          cp Firmware/LowLevel/.pio/build/0_10_X_LSM6DSO/firmware.uf2 ./artifacts/0_10_X_LSM6DSO
-          
-          mkdir ./artifacts/0_9_X_MPU9250
-          cp Firmware/LowLevel/.pio/build/0_9_X_MPU9250/firmware.elf ./artifacts/0_9_X_MPU9250
-          cp Firmware/LowLevel/.pio/build/0_9_X_MPU9250/firmware.uf2 ./artifacts/0_9_X_MPU9250
-
-          mkdir ./artifacts/0_9_X_WT901
-          cp Firmware/LowLevel/.pio/build/0_9_X_WT901/firmware.elf ./artifacts/0_9_X_WT901
-          cp Firmware/LowLevel/.pio/build/0_9_X_WT901/firmware.uf2 ./artifacts/0_9_X_WT901
-
-          mkdir ./artifacts/0_9_X_WT901_INSTEAD_OF_SOUND
-          cp Firmware/LowLevel/.pio/build/0_9_X_WT901_INSTEAD_OF_SOUND/firmware.elf ./artifacts/0_9_X_WT901_INSTEAD_OF_SOUND
-          cp Firmware/LowLevel/.pio/build/0_9_X_WT901_INSTEAD_OF_SOUND/firmware.uf2 ./artifacts/0_9_X_WT901_INSTEAD_OF_SOUND
-
-          mkdir ./artifacts/0_9_X_LSM6DSO
-          cp Firmware/LowLevel/.pio/build/0_9_X_LSM6DSO/firmware.elf ./artifacts/0_9_X_LSM6DSO
-          cp Firmware/LowLevel/.pio/build/0_9_X_LSM6DSO/firmware.uf2 ./artifacts/0_9_X_LSM6DSO
+          cp Firmware/LowLevel/.pio/build/0_13_X/firmware.bin ./artifacts/0_13_X
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: open-mower-pico-firmware
           path: artifacts/
-
 
 
   tagged-release:
@@ -176,7 +129,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: release_navigator
           keep_files: true
-
 
 
   pre-release-latest-firmware:
