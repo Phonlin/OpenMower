@@ -127,7 +127,8 @@ def update_firmware(file_path):
 
         # 4. 發送 FW_END
         send_packet(ser, PACK_ID_FW_END)
-        ok, status = wait_for_ack(ser, timeout=5.0) # 寫 Flash/驗證可能需要一點時間
+        print("Pico 正在驗證檔案，請稍候...")
+        ok, status = wait_for_ack(ser, timeout=600.0) # 寫 Flash/驗證可能需要一點時間
         
         if ok and status == 0:
             print("--- 更新成功！Pico 已通過驗證 ---")

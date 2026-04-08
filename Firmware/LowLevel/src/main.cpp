@@ -741,6 +741,10 @@ void onPacketReceived(const uint8_t *buffer, const size_t size) {
         ack.type = PACKET_ID_FW_ACK;
         if (fw_file) {
             fw_update_state = FWUpdateState::DOWNLOADING;
+            fw_received_bytes = 0;
+            // 初始化即時 CRC
+            CRC32_fw.crc32(nullptr, 0); // Reset seed
+            
             ack.status = 0; // OK
             p.neoPixelSetValue(0, 0, 0, 255, true); // Blue = Update Begin
         } else {
@@ -766,9 +770,16 @@ void onPacketReceived(const uint8_t *buffer, const size_t size) {
         if (fw_update_state == FWUpdateState::DOWNLOADING && fw_file) {
             if (msg->offset == fw_received_bytes) {
                 if (fw_file.write(payload, data_len) == data_len) {
+                    // 即時更新 CRC
+                    if (fw_received_bytes == 0) {
+                        CRC32_fw.crc32(payload, data_len);
+                    } else {
+                        CRC32_fw.crc32_upd(payload, data_len);
+                    }
+                    
                     fw_received_bytes += data_len;
                     ack.status = 0; // OK
-                    p.neoPixelSetValue(0, 0, 0, (fw_received_bytes / 256) % 2 ? 255 : 50, true); // Blink blue as it receives
+                    p.neoPixelSetValue(0, 0, 0, (fw_received_bytes / 256) % 2 ? 255 : 50, true); // Blink blue
                 }
             } else {
                 ack.status = 2; // Offset mismatch
@@ -782,45 +793,21 @@ void onPacketReceived(const uint8_t *buffer, const size_t size) {
     } else if (buffer[0] == PACKET_ID_FW_END && size == sizeof(struct ll_fw_end)) {
         ll_fw_ack ack;
         ack.type = PACKET_ID_FW_ACK;
-        ack.status = 1; // Default to error
+        ack.status = 1;
 
         if (fw_update_state == FWUpdateState::DOWNLOADING && fw_file) {
             fw_file.close();
             fw_update_state = FWUpdateState::IDLE;
 
-            // Verify CRC32
-            File read_file = LittleFS.open("/firmware.bin", "r");
-            if (read_file && read_file.size() == fw_expected_size) {
-                uint8_t temp_buf[256];
-                uint32_t bytes_read = 0;
-                bool first_chunk = true;
-                uint32_t calc_crc = 0;
+            // 取得剛才在傳輸中算好的累積 CRC
+            uint32_t final_calc_crc = CRC32_fw.crc32_upd(nullptr, 0);
 
-                while (read_file.available()) {
-                    uint16_t to_read = min((uint32_t)sizeof(temp_buf), fw_expected_size - bytes_read);
-                    uint16_t read_bytes = read_file.read(temp_buf, to_read);
-                    if (read_bytes == 0) break;
-
-                    if (first_chunk) {
-                        calc_crc = CRC32_fw.crc32(temp_buf, read_bytes);
-                        first_chunk = false;
-                    } else {
-                        calc_crc = CRC32_fw.crc32_upd(temp_buf, read_bytes);
-                    }
-                    bytes_read += read_bytes;
-                }
-                read_file.close();
-
-                if (calc_crc == fw_expected_crc32) {
-                    ack.status = 0; // OK
-                    p.neoPixelSetValue(0, 0, 255, 0, true); // Green = Success
-                } else {
-                    ack.status = 3; // CRC mismatch
-                    p.neoPixelSetValue(0, 255, 0, 0, true); // Red = CRC Err
-                }
+            if (fw_received_bytes == fw_expected_size && final_calc_crc == fw_expected_crc32) {
+                ack.status = 0; // OK
+                p.neoPixelSetValue(0, 0, 255, 0, true); // Green = Success
             } else {
-                if (read_file) read_file.close();
-                ack.status = 4; // Size mismatch / read err
+                ack.status = 3; // CRC or Size Error
+                p.neoPixelSetValue(0, 255, 0, 0, true); // Red = Err
             }
         }
         // Force ACK send
