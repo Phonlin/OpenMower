@@ -21,6 +21,8 @@
 #include <Arduino.h>
 #include <FastCRC.h>
 #include <LittleFS.h>
+#include <Updater.h>
+
 #include <NeoPixelConnect.h>
 #include <PacketSerial.h>
 
@@ -122,11 +124,9 @@ enum class FWUpdateState {
 };
 FWUpdateState fw_update_state = FWUpdateState::IDLE;
 uint32_t fw_expected_size = 0;
-uint32_t fw_expected_crc32 = 0;
 uint16_t fw_chunk_size = 0;
 uint32_t fw_received_bytes = 0;
-File fw_file;
-FastCRC32 CRC32_fw;
+
 
 
 float imu_temp[9];
@@ -732,19 +732,14 @@ void onPacketReceived(const uint8_t *buffer, const size_t size) {
     } else if (buffer[0] == PACKET_ID_FW_BEGIN && size == sizeof(struct ll_fw_begin)) {
         const ll_fw_begin *msg = (const ll_fw_begin *)buffer;
         fw_expected_size = msg->fw_size;
-        fw_expected_crc32 = msg->fw_crc32;
         fw_chunk_size = msg->chunk_size;
         fw_received_bytes = 0;
         
-        fw_file = LittleFS.open("/firmware.bin", "w");
         ll_fw_ack ack;
         ack.type = PACKET_ID_FW_ACK;
-        if (fw_file) {
+        // Start OTA!
+        if (Update.begin(fw_expected_size, U_FLASH)) {
             fw_update_state = FWUpdateState::DOWNLOADING;
-            fw_received_bytes = 0;
-            // 初始化即時 CRC
-            CRC32_fw.crc32(nullptr, 0); // Reset seed
-            
             ack.status = 0; // OK
             p.neoPixelSetValue(0, 0, 0, 255, true); // Blue = Update Begin
         } else {
@@ -767,17 +762,11 @@ void onPacketReceived(const uint8_t *buffer, const size_t size) {
         ack.type = PACKET_ID_FW_ACK;
         ack.status = 1; // Default to error
 
-        if (fw_update_state == FWUpdateState::DOWNLOADING && fw_file) {
+        if (fw_update_state == FWUpdateState::DOWNLOADING) {
             if (msg->offset == fw_received_bytes) {
-                if (fw_file.write(payload, data_len) == data_len) {
-                    // 即時更新 CRC
-                    if (fw_received_bytes == 0) {
-                        CRC32_fw.crc32(payload, data_len);
-                    } else {
-                        CRC32_fw.crc32_upd(payload, data_len);
-                    }
-                    
+                if (Update.write((uint8_t*)payload, data_len) == data_len) {
                     fw_received_bytes += data_len;
+                    rp2040.wdt_reset(); // 確保不會被 watchdog 咬
                     ack.status = 0; // OK
                     p.neoPixelSetValue(0, 0, 0, (fw_received_bytes / 256) % 2 ? 255 : 50, true); // Blink blue
                 }
@@ -790,23 +779,20 @@ void onPacketReceived(const uint8_t *buffer, const size_t size) {
         ((uint8_t *)&ack)[sizeof(ack) - 1] = (ack_crc >> 8) & 0xFF;
         ((uint8_t *)&ack)[sizeof(ack) - 2] = (ack_crc & 0xFF);
         packetSerial.send((uint8_t *)&ack, sizeof(ack));
-    } else if (buffer[0] == PACKET_ID_FW_END && size == sizeof(struct ll_fw_end)) {
+    } else if (buffer[0] == PACKET_ID_FW_END && size >= sizeof(struct ll_fw_end)) {
         ll_fw_ack ack;
         ack.type = PACKET_ID_FW_ACK;
         ack.status = 1;
 
-        if (fw_update_state == FWUpdateState::DOWNLOADING && fw_file) {
-            fw_file.close();
-            fw_update_state = FWUpdateState::IDLE;
-
-            // 取得剛才在傳輸中算好的累積 CRC
-            uint32_t final_calc_crc = CRC32_fw.crc32_upd(nullptr, 0);
-
-            if (fw_received_bytes == fw_expected_size && final_calc_crc == fw_expected_crc32) {
+        if (fw_update_state == FWUpdateState::DOWNLOADING) {
+            if (Update.end(true)) {
                 ack.status = 0; // OK
+                fw_update_state = FWUpdateState::IDLE;
                 p.neoPixelSetValue(0, 0, 255, 0, true); // Green = Success
             } else {
-                ack.status = 3; // CRC or Size Error
+                ack.status = 3; // Update failed
+                Update.printError(Serial);
+                fw_update_state = FWUpdateState::IDLE;
                 p.neoPixelSetValue(0, 255, 0, 0, true); // Red = Err
             }
         }
@@ -815,17 +801,25 @@ void onPacketReceived(const uint8_t *buffer, const size_t size) {
         ((uint8_t *)&ack)[sizeof(ack) - 1] = (ack_crc >> 8) & 0xFF;
         ((uint8_t *)&ack)[sizeof(ack) - 2] = (ack_crc & 0xFF);
         packetSerial.send((uint8_t *)&ack, sizeof(ack));
+
+        // Delay and Reboot if successful!
+        if (ack.status == 0) {
+            delay(100);
+            rp2040.reboot();
+        }
     } else if (buffer[0] == PACKET_ID_FW_ABORT) {
-        if (fw_file) {
-            fw_file.close();
+        if (fw_update_state == FWUpdateState::DOWNLOADING) {
+            Update.end(false); // abort
         }
         fw_update_state = FWUpdateState::IDLE;
-        LittleFS.remove("/firmware.bin");
         
         ll_fw_ack ack;
         ack.type = PACKET_ID_FW_ACK;
         ack.status = 0; // OK aborted
-        sendMessage(&ack, sizeof(ack));
+        uint16_t ack_crc = CRC16.ccitt((uint8_t *)&ack, sizeof(ack) - 2);
+        ((uint8_t *)&ack)[sizeof(ack) - 1] = (ack_crc >> 8) & 0xFF;
+        ((uint8_t *)&ack)[sizeof(ack) - 2] = (ack_crc & 0xFF);
+        packetSerial.send((uint8_t *)&ack, sizeof(ack));
     }
 }
 
