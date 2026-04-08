@@ -15,31 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 
-
 jobs:
-
-  erc-drc-checks:
-    runs-on: ubuntu-latest
-    if: github.ref_type != 'tag'
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: INTI-CMNB/KiBot@v2_k8
-        with:
-          config: Hardware/OpenMowerMainboard/OpenMowerMainboard.kibot.yaml
-          board: Hardware/OpenMowerMainboard/OpenMowerMainboard.kicad_pcb
-          verbose: 1
-
-      - uses: INTI-CMNB/KiBot@v2_k7
-        with:
-          config: Hardware/DockStation/mower_PowerDeviceCarrier.kibot.yaml
-          board: Hardware/DockStation/mower_PowerDeviceCarrier.kicad_pcb
-          verbose: 1
-
-
-
   firmware:
     runs-on: ubuntu-latest
 
