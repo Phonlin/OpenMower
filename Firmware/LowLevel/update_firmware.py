@@ -6,6 +6,7 @@ from cobs import cobs
 import requests
 import zipfile
 import io
+import os
 
 # Firmware 自動下載抓取
 FIRMWARE_URL = "https://github.com/Phonlin/OpenMower/releases/download/latest/firmware.zip"
@@ -154,11 +155,29 @@ def fetch_latest_firmware(url):
     return True
 
 if __name__ == "__main__":
-    FW_PATH = 'FW/firmware/0_13_X/firmware.bin'
+    choice = input(
+        "Enter number to choose:\n"
+        "1. Use local firmware file\n"
+        "2. Fetch latest firmware from Phonlin/OpenMower\n"
+        ">> "
+    )
 
-    # 確保成功下載才更新
-    if fetch_latest_firmware(FIRMWARE_URL):
-        update_firmware(FW_PATH)
+    if choice == "1":
+        fw_path = input("Enter firmware file path:\n").strip()
+        if os.path.exists(fw_path):
+            update_firmware(fw_path)
+        else:
+            print("Error: File not found.")
+            exit(1)
+    elif choice == "2":
+        fw_path = 'FW/firmware/0_13_X/firmware.bin'
+        # 確保成功下載才更新
+        if fetch_latest_firmware(FIRMWARE_URL):
+            print("Download successful, starting update...")
+            update_firmware(fw_path)
+        else:
+            print("Failed to update.")
+            exit(1)
     else:
-        print("停止更新")
+        print("Invalid selection.")
         exit(1)
