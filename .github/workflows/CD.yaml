@@ -6,12 +6,14 @@ on:
       - "Firmware/LowLevel/**"
       - "!Firmware/LowLevel/**.md"
       - "!**.md"
+      - "!**.py"
 
   pull_request:
     paths:
       - "Firmware/LowLevel/**"
       - "!Firmware/LowLevel/**.md"
       - "!**.md"
+      - "!**.py"
 
   workflow_dispatch:
 
