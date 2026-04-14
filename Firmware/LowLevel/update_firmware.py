@@ -73,6 +73,8 @@ def wait_for_ack(ser, timeout=2.0):
                 buffer = b""
             else:
                 buffer += char
+        else:
+            time.sleep(0.001)
     return False, None
 
 def update_firmware(file_path):
@@ -91,19 +93,27 @@ def update_firmware(file_path):
 
     with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.1) as ser:
         # 0. 確保 Buffer 清空
+        time.sleep(0.1)
         ser.reset_input_buffer()
+        ser.reset_output_buffer()
+        time.sleep(0.1)
 
         # 2. 發送 FW_BEGIN
         # struct: [fw_size(I), fw_crc32(I), chunk_size(H)] -> 4+4+2 = 10 bytes
         begin_payload = struct.pack('<IIH', fw_size, fw_crc32, CHUNK_SIZE)
-        send_packet(ser, PACK_ID_FW_BEGIN, begin_payload)
         
-        ok, status = wait_for_ack(ser)
-        if not ok or status != 0:
-            print(f"錯誤: Pico 拒絕更新 (Status: {status})")
+        for retry in range(3):
+            send_packet(ser, PACK_ID_FW_BEGIN, begin_payload)
+            ok, status = wait_for_ack(ser, timeout=2.0)
+            if ok and status == 0:
+                break
+            print(f"嘗試與 Pico 握手失敗 (Status: {status})，重試 {retry+1}/3 ...")
+            time.sleep(0.5)
+        else:
+            print(f"錯誤: Pico 無回應或拒絕更新 (Status: {status})")
             return
 
-        print("Pico 已就緒，開始傳輸 Chunks...")
+        print("Pico 已就緒，開始傳輸 Chunks (過程中請勿中斷或關機)...")
 
         # 3. 分段發送 FW_CHUNK
         for offset in range(0, fw_size, CHUNK_SIZE):
@@ -137,11 +147,13 @@ def update_firmware(file_path):
         
         if ok and status == 0:
             print("--- 更新成功！Pico 已通過驗證 ---")
+            print("請等待 Pico 與 RPi 自動重啟")
         else:
             print(f"--- 更新失敗！Pico 報錯代碼: {status} ---")
 
 # 抓取並解壓縮
 def fetch_latest_firmware(url):
+    print("正在下載...")
     try:
         response = requests.get(url)
         response.raise_for_status()
@@ -155,10 +167,46 @@ def fetch_latest_firmware(url):
     return True
 
 if __name__ == "__main__":
+    # 啟用 input() 的 Tab 鍵路徑自動補全功能
+    try:
+        import readline
+        import glob
+        
+        def path_completer(text, state):
+            # 展開 ~ 等路徑，並尋找符合的檔案/資料夾
+            expanded = os.path.expanduser(text)
+            matches = glob.glob(expanded + '*')
+            
+            results = []
+            for m in matches:
+                if os.path.isdir(m):
+                    # 如果是資料夾，在尾部加上目錄分隔符號 (/)，方便繼續輸入下一層
+                    results.append(m + os.sep)
+                else:
+                    results.append(m)
+            
+            if state < len(results):
+                return results[state]
+            return None
+
+        # 重新設定分隔符，將 "/" 與 "\" 移除，避免路徑被切斷導致子目錄補全失效
+        readline.set_completer_delims('\t\n;')
+        
+        # 根據不同的底層函式庫 (GNU readline 或 macOS 的 libedit) 綁定 Tab 鍵
+        if 'libedit' in getattr(readline, '__doc__', ''):
+            readline.parse_and_bind("bind ^I rl_complete")
+        else:
+            readline.parse_and_bind("tab: complete")
+            
+        # 載入我們自訂的路徑補全器
+        readline.set_completer(path_completer)
+    except ImportError:
+        pass # 如果在不支援的環境 (如預設 Windows) 則忽略
+
     choice = input(
         "Enter number to choose:\n"
-        "1. Use local firmware file\n"
-        "2. Fetch latest firmware from Phonlin/OpenMower\n"
+        "1. 自行輸入 firmware 路徑\n"
+        "2. 抓取最新 firmware from Github Phonlin/OpenMower\n"
         ">> "
     )
 
