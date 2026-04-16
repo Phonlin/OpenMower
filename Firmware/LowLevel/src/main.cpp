@@ -367,17 +367,77 @@ void loop1() {
         bool state = gpio_get(PIN_MUX_IN);
 
         switch (mux_address) {
-            // USS_L 左側超音波
+            /*
+             * MUX 用途
+             * addr | signal | meclab用途
+             * -----+--------+-------------------
+             *   0  | uss3   | 碰撞
+             *   1  | uss2   | L 超音波
+             *   2  | uss1   | R 超音波
+             *   3  | uss4   |
+             *   4  | uss5   |
+             *   5  | rain   |
+             *   6  | sound  |
+             */
+
+            // 碰撞
             case 0:
-                status_message.uss_ranges_m[0] = 0.5;  // 測試值
+                if (gpio_get(PIN_MUX_IN) == LOW) {
+                    mutex_enter_blocking(&mtx_status_message);
+                    status_message.uss_ranges_m[2] = 1; //借用 uss_ranges_m 傳遞碰撞狀態
+                    mutex_exit(&mtx_status_message);
+                } else {
+                    mutex_enter_blocking(&mtx_status_message);
+                    status_message.uss_ranges_m[2] = 0;
+                    mutex_exit(&mtx_status_message);
+                }
                 break;
-            // USS_R 右側超音波
+            
+            // USS_L 左側超音波
             case 1:
-                status_message.uss_ranges_m[1] = 2.5;  // 測試值
+                gpio_put(PIN_MUX_OUT, 0);
+                delayMicroseconds(2);
+                gpio_put(PIN_MUX_OUT, 1);
+                delayMicroseconds(10);
+                gpio_put(PIN_MUX_OUT, 0);
+                
+                // 23000 -> 400cm, 可視情況降低提高速度
+                unsigned long duration = pulseIn(PIN_MUX_IN, HIGH, 23000);
+                float distance;
+
+                if (duration == 0){
+                    distance = -1.0f;
+                } else {
+                    distance = (float)duration * 0.000343 / 2.0f;
+                }
+                
+                // mutex 互鎖保護
+                mutex_enter_blocking(&mtx_status_message);
+                status_message.uss_ranges_m[0] = distance;
+                mutex_exit(&mtx_status_message);
                 break;
-            // Hall 碰撞霍爾
+            
+            // USS_R 右側超音波
             case 2:
-                // TODO: hall 未處理
+                gpio_put(PIN_MUX_OUT, 0);
+                delayMicroseconds(2);
+                gpio_put(PIN_MUX_OUT, 1);
+                delayMicroseconds(10);
+                gpio_put(PIN_MUX_OUT, 0);
+
+                unsigned long duration = pulseIn(PIN_MUX_IN, HIGH, 23000);
+                float distance;
+
+                if (duration == 0){
+                    distance = -1.0f;
+                } else {
+                    distance = (float)duration * 0.000343 / 2.0f;
+                }
+                
+                // mutex 互鎖保護
+                mutex_enter_blocking(&mtx_status_message);
+                status_message.uss_ranges_m[1] = distance;
+                mutex_exit(&mtx_status_message);
                 break;
 
             case 5:
