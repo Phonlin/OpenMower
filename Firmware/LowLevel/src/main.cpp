@@ -365,6 +365,8 @@ void loop1() {
         gpio_put_masked(0b111 << 13, mux_address << 13);
         delay(1);
         bool state = gpio_get(PIN_MUX_IN);
+        unsigned long duration;
+        float distance;
 
         switch (mux_address) {
             /*
@@ -402,8 +404,7 @@ void loop1() {
                 gpio_put(PIN_MUX_OUT, 0);
                 
                 // 23000 -> 400cm, 可視情況降低提高速度
-                unsigned long duration = pulseIn(PIN_MUX_IN, HIGH, 23000);
-                float distance;
+                duration = pulseIn(PIN_MUX_IN, HIGH, 23000);
 
                 if (duration == 0){
                     distance = -1.0f;
@@ -425,8 +426,7 @@ void loop1() {
                 delayMicroseconds(10);
                 gpio_put(PIN_MUX_OUT, 0);
 
-                unsigned long duration = pulseIn(PIN_MUX_IN, HIGH, 23000);
-                float distance;
+                duration = pulseIn(PIN_MUX_IN, HIGH, 23000);
 
                 if (duration == 0){
                     distance = -1.0f;
