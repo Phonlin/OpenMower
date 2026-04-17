@@ -407,7 +407,7 @@ void loop1() {
                 duration = pulseIn(PIN_MUX_IN, HIGH, 23000);
 
                 if (duration == 0){
-                    // distance = -1.0f;
+                    distance = 999.0f;
                     continue;
                 } else {
                     distance = (float)duration * 0.000343 / 2.0f;
@@ -430,7 +430,7 @@ void loop1() {
                 duration = pulseIn(PIN_MUX_IN, HIGH, 23000);
 
                 if (duration == 0){
-                    // distance = -1.0f;
+                    distance = 999.0f;
                     continue;
                 } else {
                     distance = (float)duration * 0.000343 / 2.0f;
