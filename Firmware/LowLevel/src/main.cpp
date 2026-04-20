@@ -158,6 +158,40 @@ const std::function<bool()> available_halls[MAX_HALL_INPUTS] = {
 // Instead of iterating constantly over all available_halls, we use this compacted vector (which only contain the used halls)
 etl::vector<HallHandle, MAX_HALL_INPUTS> halls;
 
+/**
+ * Simple 1D Kalman filter for distance (random-walk process model)
+ * x_k = x_{k-1} + w  (process noise q)
+ * z_k = x_k + v      (measurement noise r)
+ */
+struct KalmanFilter1D {
+    float x;             // state (distance in meters)
+    float p;             // covariance
+    float q;             // process noise
+    float r;             // measurement noise
+    unsigned long last_update_ms;
+
+    KalmanFilter1D(float q_in = 0.001f, float r_in = 0.05f) : x(0.0f), p(1e3f), q(q_in), r(r_in), last_update_ms(0) {}
+
+    // Predict step (random walk): increase uncertainty
+    void predict() {
+        p += q;
+    }
+
+    // Update step with a measurement z (in meters)
+    void update(float z) {
+        float K = p / (p + r);
+        x = x + K * (z - x);
+        p = (1.0f - K) * p;
+        last_update_ms = millis();
+    }
+
+    float value() const { return x; }
+    unsigned long age_ms() const { return millis() - last_update_ms; }
+};
+
+// One filter per ultrasonic sensor we care about (left = idx0, right = idx1)
+static KalmanFilter1D kf_uss[2];
+
 void sendMessage(void *message, size_t size);
 void sendUIMessage(void *message, size_t size);
 void onPacketReceived(const uint8_t *buffer, size_t size);
@@ -402,17 +436,28 @@ void loop1() {
                 gpio_put(PIN_MUX_OUT, 1);
                 delayMicroseconds(10);
                 gpio_put(PIN_MUX_OUT, 0);
-                
+
                 // 23000 -> 400cm, 可視情況降低提高速度
                 duration = pulseIn(PIN_MUX_IN, HIGH, 23000);
 
-                if (duration == 0){
-                    distance = 999.0f;
-                    continue;
+                // If we got a valid echo, update the Kalman filter. If timeout, predict only.
+                if (duration == 0) {
+                    // No measurement: predict only
+                    kf_uss[0].predict();
+                    // If the last valid measurement is recent, use the filter prediction.
+                    if (kf_uss[0].last_update_ms != 0 && kf_uss[0].age_ms() < 500) {
+                        distance = kf_uss[0].value();
+                    } else {
+                        // Too old or never initialized -> report timeout sentinel
+                        distance = 999.0f;
+                    }
                 } else {
-                    distance = (float)duration * 0.000343 / 2.0f;
+                    // Convert duration (us) to meters: v=343m/s => 0.000343 m/us, divide by 2 for round trip
+                    float meas = (float)duration * 0.000343f / 2.0f;
+                    kf_uss[0].update(meas);
+                    distance = kf_uss[0].value();
                 }
-                
+
                 // mutex 互鎖保護
                 mutex_enter_blocking(&mtx_status_message);
                 status_message.uss_ranges_m[0] = distance;
@@ -429,13 +474,22 @@ void loop1() {
 
                 duration = pulseIn(PIN_MUX_IN, HIGH, 23000);
 
-                if (duration == 0){
-                    distance = 999.0f;
-                    continue;
+                // If we got a valid echo, update the Kalman filter. If timeout, predict only.
+                if (duration == 0) {
+                    // No measurement: predict only
+                    kf_uss[1].predict();
+                    // If the last valid measurement is recent, use the filter prediction.
+                    if (kf_uss[1].last_update_ms != 0 && kf_uss[1].age_ms() < 500) {
+                        distance = kf_uss[1].value();
+                    } else {
+                        distance = 999.0f;
+                    }
                 } else {
-                    distance = (float)duration * 0.000343 / 2.0f;
+                    float meas = (float)duration * 0.000343f / 2.0f;
+                    kf_uss[1].update(meas);
+                    distance = kf_uss[1].value();
                 }
-                
+
                 // mutex 互鎖保護
                 mutex_enter_blocking(&mtx_status_message);
                 status_message.uss_ranges_m[1] = distance;
